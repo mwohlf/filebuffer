@@ -109,13 +109,15 @@ public class PageImpl implements IPage, Closeable {
 			writeLock.lock();
 			if (writeBuffer == null) {
 				writeBuffer = channel.map(READ_WRITE, 0, file.length());
-				metaData = new PageMetadata(writeBuffer);
+				metaData = new PageMetadata(writeBuffer);		
 				if (metaData.getIndex() <= 0) {
 					throw new CacheException("page index is " + metaData.getIndex() + " for '" + filename + "'");
 				}
-				writeBuffer.position(PageMetadata.getLimit(writeBuffer));
-			}
-			readBuffer.set(writeBuffer.slice().asReadOnlyBuffer());
+			}		
+			writeBuffer.position(PageMetadata.getLimit(writeBuffer)); // find the append position
+			ByteBuffer localReadBuffer = writeBuffer.asReadOnlyBuffer();
+			localReadBuffer.position(PageMetadata.METADATA_SIZE);
+			readBuffer.set(localReadBuffer);
 
 		} catch (FileNotFoundException ex) {
 			throw new CacheException("error finding file filename: '" + filename + "'", ex);

@@ -45,7 +45,7 @@ public class SinglePageTest {
     @SuppressWarnings("resource")
 	@Test
     public void smokeTest() throws IOException {
-        PageImpl write = new PageImpl(filename).createFile(70);
+        PageImpl write = new PageImpl(filename).createFile(PageMetadata.METADATA_SIZE + 70);
         write.write(bb("blablablabla23"));
         write.close();
 
@@ -70,8 +70,23 @@ public class SinglePageTest {
     
     @SuppressWarnings("resource")
     @Test
+    public void doubleRead() throws IOException {
+        PageImpl write = new PageImpl(filename).createFile(PageMetadata.METADATA_SIZE + 70);
+        write.write(bb("testdatabla"));
+        write.close();
+
+        PageImpl read = new PageImpl(filename).readWrite();
+        assertEquals("testdatabla", str(read.read()));
+
+        // same data should be returned
+        read = new PageImpl(filename).readWrite();
+        assertEquals("testdatabla", str(read.read()));
+    }
+
+    @SuppressWarnings("resource")
+    @Test
     public void splitWrite() throws IOException {
-        PageImpl write = new PageImpl(filename).createFile(70);
+        PageImpl write = new PageImpl(filename).createFile(PageMetadata.METADATA_SIZE + 70);
         write.write(bb("testda2ta"));
         write.close();
 
@@ -109,7 +124,7 @@ public class SinglePageTest {
     public void doubleWriteExeption() {
         PageImpl write2 = null;
         try {
-            PageImpl write1 = new PageImpl(filename).createFile(70);
+            PageImpl write1 = new PageImpl(filename).createFile(PageMetadata.METADATA_SIZE + 70);
             write1.write(bb("testdata"));
             write1.close();
 
@@ -121,9 +136,10 @@ public class SinglePageTest {
         assertNull(write2);
     }
 
+    @SuppressWarnings("resource")
     @Test
     public void sequentialReadWrite() throws IOException {
-        PageImpl write = new PageImpl(filename).createFile(250);
+        PageImpl write = new PageImpl(filename).createFile(PageMetadata.METADATA_SIZE + 250);
         write.write(bb("hüzelbrützel"));
         write.close();
 
@@ -155,12 +171,13 @@ public class SinglePageTest {
         assertEquals("bretzelbrötchen", str(read.read()));
     }
 
+    @SuppressWarnings("resource")
     @Test
     public void writeIntoFullPage() throws IOException {
         // stuff in the file:
         // 8 byte index, 4 byte limit, (not part of the payload)
         // 4 byte chunksize in
-        PageImpl write = new PageImpl(filename).createFile(35); 
+        PageImpl write = new PageImpl(filename).createFile(PageMetadata.METADATA_SIZE + 19); 
         ByteBuffer param = bb("12345678901234567890123456789012345");
         write.write(param);
         assertEquals(35, param.remaining());
@@ -201,25 +218,33 @@ public class SinglePageTest {
 
     }
 
-    @Test @Ignore
+    @SuppressWarnings("resource")
+    @Test
     public void checkUnderflow() throws IOException {
-        String filename = this.filename;
         ByteBuffer param;
 
-        PageImpl write = new PageImpl(filename).createFile(5);
-        param = bb("1");
-        write.write(param);
-        assertEquals(0, param.remaining());
+        PageImpl write = new PageImpl(filename).createFile(PageMetadata.METADATA_SIZE + 20);
+        
+        write.write(param = bb("1"));
+        assertEquals(0, param.remaining());  // 15 = 20 - (4+1)
+        
+        write.write(param = bb("2"));
+        assertEquals(0, param.remaining());  // 10 = 15 - (4+1)
 
-        write.write(bb("2"));
-        write.write(bb("3"));
-        write.write(bb("4"));
-        write.write(bb("5"));
+        write.write(param = bb("3"));
+        assertEquals(0, param.remaining());  // 5 = 10 - (4+1)
+
+        write.write(param = bb("4"));
+        assertEquals(1, param.remaining());  // 5 left but we need 4 for the EOF --> full
+
+        write.write(param = bb("5"));
+        assertEquals(1, param.remaining());
+
     }
 
     @Test
     public void readEmpty() throws IOException, InterruptedException {
-        PageImpl write = new PageImpl(filename).createFile(70);
+        PageImpl write = new PageImpl(filename).createFile(PageMetadata.METADATA_SIZE + 70);
         write.close();
 
         PageImpl read = new PageImpl(filename).readOnly();
@@ -228,31 +253,8 @@ public class SinglePageTest {
     }
 
 
-
-
-                /*
-    @Test
-    public void doubleRead() throws IOException {
-        String filename = filename.getCanonicalPath();
-
-        PageImpl write = new PageImpl(filename).createFile(70);
-        write.write("testdatabla".getBytes());
-        write.finalizeFile();
-
-        PageImpl read = new PageImpl(filename).readWrite();
-        assertEquals("testdatabla", new String(read.read()));
-
-        // same data should be returned
-        read = new PageImpl(filename).readWrite();
-        assertEquals("testdatabla", new String(read.read()));
-    }
-
-
-
     @Test
     public void doubleCreate() throws IOException, InterruptedException {
-        String filename = filename.getCanonicalPath();
-
         try {
         	PageImpl page = new PageImpl(filename);
         	PageImpl write1 = page.createFile(70);
@@ -265,33 +267,39 @@ public class SinglePageTest {
 
     @Test
     public void concurrentReadWrite() throws IOException, InterruptedException {
-        String filename = filename.getCanonicalPath();
         PageImpl write = new PageImpl(filename).createFile(1024);
 
-        WriterThread writer = new WriterThread("abc:".getBytes(), 100, write);
+        WriterThread writer = new WriterThread("abc:", 100, write);
         ReaderThread reader = new ReaderThread(filename);
 
         reader.start();
         writer.start();
         writer.join();
+        reader.writerrunning = false;
 
-        String content = new String(new PageImpl(filename).readOnly().read());
+        String content = "";
+        String incoming = "";
+        PageImpl read = new PageImpl(filename).readOnly();
+        do {
+        	incoming = str(read.read());
+        	content += incoming;
+        } while (incoming.length() > 0); // writer finished we shouldn't have any trouble here
+
+        
         String[] c = content.split(":");
         assertEquals(100, c.length);
         for (String s : c) {
             assertEquals("abc", s);
         }
-        reader.stop=true;
         reader.join();
 
         assertEquals(content, reader.result.toString());
     }
-    */
 
     @SuppressWarnings("resource")
 	@Test
     public void fanOutRead() throws IOException, InterruptedException {
-        PageImpl write = new PageImpl(filename).createFile(1024);
+        PageImpl write = new PageImpl(filename).createFile(PageMetadata.METADATA_SIZE + 1024);
         int iterations = 3;
 
         WriterThread writer = new WriterThread("bla:", iterations, write);
@@ -317,14 +325,14 @@ public class SinglePageTest {
         reader2.join();
         reader3.join();
         reader4.join();
-        
+               
         String content = "";
         String incoming = "";
         PageImpl reader = new PageImpl(filename).readOnly();
         do {
         	incoming = str(reader.read());
         	content += incoming;
-        } while (incoming.length() > 0);
+        } while (incoming.length() > 0); // writer finished we shouldn't have any trouble here
         String[] c = content.split(":");
         assertEquals(iterations, c.length);
         for (String s : c) {
