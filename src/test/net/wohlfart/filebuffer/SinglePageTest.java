@@ -12,7 +12,6 @@ import java.util.Random;
 
 import org.junit.After;
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
 
 public class SinglePageTest {
@@ -45,11 +44,11 @@ public class SinglePageTest {
     @SuppressWarnings("resource")
 	@Test
     public void smokeTest() throws IOException {
-        PageImpl write = new PageImpl(filename).createFile(PageMetadata.METADATA_SIZE + 70);
+        IPage write = new PageImpl(filename).createFile(PageMetadata.METADATA_SIZE + 70);
         write.write(bb("blablablabla23"));
         write.close();
 
-        PageImpl read = new PageImpl(filename).readOnly();
+        IPage read = new PageImpl(filename).readOnly();
         assertBufferEquals(bb("blablablabla23"), read.read());
         read.close();
     }
@@ -57,12 +56,12 @@ public class SinglePageTest {
     @SuppressWarnings("resource")
 	@Test
     public void doubleWrite() throws IOException {
-        PageImpl write = new PageImpl(filename).createFile(70);
+    	IPage write = new PageImpl(filename).createFile(70);
         write.write(bb("test1data"));
         write.write(bb("2"));
         write.close();
 
-        PageImpl read = new PageImpl(filename).readOnly();
+        IPage read = new PageImpl(filename).readOnly();
         assertBufferEquals(bb("test1data"), read.read());
         assertBufferEquals(bb("2"), read.read());
         read.close();
@@ -71,22 +70,24 @@ public class SinglePageTest {
     @SuppressWarnings("resource")
     @Test
     public void doubleRead() throws IOException {
-        PageImpl write = new PageImpl(filename).createFile(PageMetadata.METADATA_SIZE + 70);
+    	IPage write = new PageImpl(filename).createFile(PageMetadata.METADATA_SIZE + 70);
         write.write(bb("testdatabla"));
         write.close();
 
-        PageImpl read = new PageImpl(filename).readWrite();
+        IPage read = new PageImpl(filename).readWrite();
         assertEquals("testdatabla", str(read.read()));
+        read.close();
 
         // same data should be returned
         read = new PageImpl(filename).readWrite();
         assertEquals("testdatabla", str(read.read()));
+        read.close();
     }
 
     @SuppressWarnings("resource")
     @Test
     public void splitWrite() throws IOException {
-        PageImpl write = new PageImpl(filename).createFile(PageMetadata.METADATA_SIZE + 70);
+    	IPage write = new PageImpl(filename).createFile(PageMetadata.METADATA_SIZE + 70);
         write.write(bb("testda2ta"));
         write.close();
 
@@ -95,9 +96,10 @@ public class SinglePageTest {
         write.write(bb("777"));
         write.close();
 
-        PageImpl read = new PageImpl(filename).readOnly();
+        IPage read = new PageImpl(filename).readOnly();
         assertBufferEquals(bb("testda2ta"), read.read());
         assertBufferEquals(bb("777"), read.read());
+        read.close();
 
         // param should be consumed
         write = new PageImpl(filename).readWrite();
@@ -114,15 +116,14 @@ public class SinglePageTest {
 
         // rewrite already written buffer shouldn't do anything
         write.write(param);
-        assertEquals(0, param.remaining());
-        
+        assertEquals(0, param.remaining());      
         write.close();
     }
 
     @SuppressWarnings("resource")
     @Test
     public void doubleWriteExeption() {
-        PageImpl write2 = null;
+    	IPage write2 = null;
         try {
             PageImpl write1 = new PageImpl(filename).createFile(PageMetadata.METADATA_SIZE + 70);
             write1.write(bb("testdata"));
@@ -139,11 +140,11 @@ public class SinglePageTest {
     @SuppressWarnings("resource")
     @Test
     public void sequentialReadWrite() throws IOException {
-        PageImpl write = new PageImpl(filename).createFile(PageMetadata.METADATA_SIZE + 250);
+    	IPage write = new PageImpl(filename).createFile(PageMetadata.METADATA_SIZE + 250);
         write.write(bb("hüzelbrützel"));
         write.close();
 
-        PageImpl read = new PageImpl(filename).readOnly();
+        IPage read = new PageImpl(filename).readOnly();
         assertEquals("hüzelbrützel", str(read.read()));
         read.close();
 
@@ -177,7 +178,7 @@ public class SinglePageTest {
         // stuff in the file:
         // 8 byte index, 4 byte limit, (not part of the payload)
         // 4 byte chunksize in
-        PageImpl write = new PageImpl(filename).createFile(PageMetadata.METADATA_SIZE + 19); 
+    	IPage write = new PageImpl(filename).createFile(PageMetadata.METADATA_SIZE + 19); 
         ByteBuffer param = bb("12345678901234567890123456789012345");
         write.write(param);
         assertEquals(35, param.remaining());
@@ -207,7 +208,7 @@ public class SinglePageTest {
         assertEquals(s.toCharArray().length, param.remaining());
 
         // check if we can read the stuff again
-        PageImpl read = new PageImpl(filename).readOnly();
+        IPage read = new PageImpl(filename).readOnly();
         assertBufferEquals(bb(string), read.read());
               
         // stil no more room to write?
@@ -223,7 +224,7 @@ public class SinglePageTest {
     public void checkUnderflow() throws IOException {
         ByteBuffer param;
 
-        PageImpl write = new PageImpl(filename).createFile(PageMetadata.METADATA_SIZE + 20);
+        IPage write = new PageImpl(filename).createFile(PageMetadata.METADATA_SIZE + 20);
         
         write.write(param = bb("1"));
         assertEquals(0, param.remaining());  // 15 = 20 - (4+1)
@@ -244,10 +245,10 @@ public class SinglePageTest {
 
     @Test
     public void readEmpty() throws IOException, InterruptedException {
-        PageImpl write = new PageImpl(filename).createFile(PageMetadata.METADATA_SIZE + 70);
+    	IPage write = new PageImpl(filename).createFile(PageMetadata.METADATA_SIZE + 70);
         write.close();
 
-        PageImpl read = new PageImpl(filename).readOnly();
+        IPage read = new PageImpl(filename).readOnly();
         assertEquals("", str(read.read()));
         assertEquals("", str(read.read()));
     }
@@ -256,9 +257,9 @@ public class SinglePageTest {
     @Test
     public void doubleCreate() throws IOException, InterruptedException {
         try {
-        	PageImpl page = new PageImpl(filename);
-        	PageImpl write1 = page.createFile(70);
-        	PageImpl write2 = page.createFile(70);
+        	IPage page = new PageImpl(filename);
+        	IPage write1 = page.createFile(70);
+        	IPage write2 = page.createFile(70);
             fail("two write instances allowed");
         } catch (CacheException ex) {
             // expectd
@@ -267,7 +268,7 @@ public class SinglePageTest {
 
     @Test
     public void concurrentReadWrite() throws IOException, InterruptedException {
-        PageImpl write = new PageImpl(filename).createFile(1024);
+    	IPage write = new PageImpl(filename).createFile(1024);
 
         WriterThread writer = new WriterThread("abc:", 100, write);
         ReaderThread reader = new ReaderThread(filename);
@@ -299,7 +300,7 @@ public class SinglePageTest {
     @SuppressWarnings("resource")
 	@Test
     public void fanOutRead() throws IOException, InterruptedException {
-        PageImpl write = new PageImpl(filename).createFile(PageMetadata.METADATA_SIZE + 1024);
+    	IPage write = new PageImpl(filename).createFile(PageMetadata.METADATA_SIZE + 1024);
         int iterations = 3;
 
         WriterThread writer = new WriterThread("bla:", iterations, write);
@@ -328,7 +329,7 @@ public class SinglePageTest {
                
         String content = "";
         String incoming = "";
-        PageImpl reader = new PageImpl(filename).readOnly();
+        IPage reader = new PageImpl(filename).readOnly();
         do {
         	incoming = str(reader.read());
         	content += incoming;
@@ -360,7 +361,7 @@ public class SinglePageTest {
 
         @Override
         public void run() {
-        	PageImpl source = new PageImpl(filename).readOnly();
+        	IPage source = new PageImpl(filename).readOnly();
             String incoming = "";
             do {
                 try {
@@ -378,9 +379,9 @@ public class SinglePageTest {
         private final Random random = new Random();
         private final String payload;
         private final int interations;
-        private final PageImpl target;
+        private final IPage target;
 
-        WriterThread(String payload, int interations, PageImpl target) {
+        WriterThread(String payload, int interations, IPage target) {
             this.payload = payload;
             this.interations = interations;
             this.target = target;
