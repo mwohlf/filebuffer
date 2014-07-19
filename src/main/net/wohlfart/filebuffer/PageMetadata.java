@@ -9,12 +9,11 @@ class PageMetadata {
 
     private static final int INDEX_POS = 0;
     private static final int LIMIT_POS = 8;
-    private static final int HEADER_OFFSET = PageImpl.LONG_SIZE + PageImpl.LONG_SIZE;
+	private static final int HEADER_OFFSET = PageImpl.LONG_SIZE + PageImpl.LONG_SIZE;
+
+	static final int METADATA_SIZE = PageImpl.LONG_SIZE + PageImpl.LONG_SIZE; 
 
     private final long bufferIndex;
-
-	static final int METADATA_SIZE = PageImpl.LONG_SIZE + PageImpl.INT_SIZE; 
-    
 	
 	static void setLimit(ByteBuffer writeBuffer, long limit) {
         writeBuffer.putLong(LIMIT_POS, limit);		

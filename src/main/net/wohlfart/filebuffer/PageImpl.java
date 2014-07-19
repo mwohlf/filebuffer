@@ -26,7 +26,8 @@ public class PageImpl implements IPage, Closeable {
 	public static final int LONG_SIZE = 8;
 	public static final int INT_SIZE = 4;
 
-	private static final int MIN_DATA_SIZE = 4;
+	private static final int MIN_DATA_SIZE = 4;  // woudl be: int[] {0, EOF}
+	private static final int EOF = Integer.MIN_VALUE;
 
 
 	private long pageIndex; // the unique index for this page
@@ -161,7 +162,8 @@ public class PageImpl implements IPage, Closeable {
 			writeLock.lock();
 
 			int chunksize = incoming.limit() - incoming.position();
-			if (writeBuffer.remaining() < chunksize + LONG_SIZE) {
+			// we need to add int for this chunk's offset plus the EOF marker for the read buffer
+			if (writeBuffer.remaining() < chunksize + INT_SIZE + INT_SIZE) { 
 				return;
 			}
 			writeBuffer.putInt(chunksize);

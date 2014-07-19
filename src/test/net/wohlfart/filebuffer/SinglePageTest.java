@@ -155,23 +155,50 @@ public class SinglePageTest {
         assertEquals("bretzelbrötchen", str(read.read()));
     }
 
-
-    @Test @Ignore
-    public void incompleteWrite() throws IOException {
+    @Test
+    public void writeIntoFullPage() throws IOException {
         // stuff in the file:
         // 8 byte index, 4 byte limit, (not part of the payload)
         // 4 byte chunksize in
-        PageImpl write = new PageImpl(filename).createFile(10);
-        ByteBuffer param = bb("1234567");
+        PageImpl write = new PageImpl(filename).createFile(35); 
+        ByteBuffer param = bb("12345678901234567890123456789012345");
         write.write(param);
-        assertEquals(7, param.remaining());
+        assertEquals(35, param.remaining());
 
-        param = bb("123456");
+        // 35 minus HEADER_SIZE (16) --> we have 19 to write
+        String string = "12345678901234567890123456789012345".substring(PageMetadata.METADATA_SIZE);
+        param = bb(string);
+        write.write(param);
+        assertEquals(string.length(), param.remaining());
+        
+        // we need 4 for the limit pointer  --> 15
+        string = "12345678901234567890123456789012345".substring(PageMetadata.METADATA_SIZE + PageImpl.INT_SIZE);
+        param = bb(string);
+        write.write(param);
+        assertEquals(string.length(), param.remaining());
+
+        // we need another 4 for the EOF pointer --> 11
+        string = "12345678901234567890123456789012345".substring(PageMetadata.METADATA_SIZE + PageImpl.INT_SIZE  + PageImpl.INT_SIZE);
+        param = bb(string);
         write.write(param);
         assertEquals(0, param.remaining());
+       
+        // no more room to write
+        String s = ".";
+        param = bb(s);
+        write.write(param);
+        assertEquals(s.toCharArray().length, param.remaining());
 
+        // check if we can read the stuff again
         PageImpl read = new PageImpl(filename).readOnly();
-        assertBufferEquals(bb("123456"), read.read());
+        assertBufferEquals(bb(string), read.read());
+              
+        // stil no more room to write?
+        String t = ".";
+        param = bb(t);
+        write.write(param);
+        assertEquals(t.toCharArray().length, param.remaining());
+
     }
 
     @Test @Ignore
