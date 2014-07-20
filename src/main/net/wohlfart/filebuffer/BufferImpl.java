@@ -25,12 +25,12 @@ public class BufferImpl implements IBuffer, Closeable {
     public void enqueue(ByteBuffer chunk, long timestamp) throws CacheException {
     	if (writePage == null) {
     		writePage = pageHandler.getWritePage(timestamp);
-        	assert writePage.remaining() > (chunk.limit() - chunk.position()) : "chunk is too big for new page";
+        	assert writePage.remainingForWrite() > (chunk.limit() - chunk.position()) : "chunk is too big for new page";
     	}
-    	if (writePage.remaining() < (chunk.limit() - chunk.position())) {
+    	if (writePage.remainingForWrite() < (chunk.limit() - chunk.position())) {
     		pageHandler.closeWritePage(writePage);
     		writePage = pageHandler.getWritePage(timestamp);
-        	assert writePage.remaining() > (chunk.limit() - chunk.position()) : "chunk is too big for new page";
+        	assert writePage.remainingForWrite() > (chunk.limit() - chunk.position()) : "chunk is too big for new page";
     	}
     	writePage.write(chunk);
     }

@@ -37,7 +37,7 @@ public class PageImpl implements IPage {
 
 	private final File cacheFile;
 
-	private final int fileSize;
+	private int fileSize;
 
 
 	private ReadWriteLock lock = new ReentrantReadWriteLock();
@@ -50,9 +50,13 @@ public class PageImpl implements IPage {
 	private PageMetadata metaData;
 
 
-	public PageImpl(File file, int fileSize) {
-		this.fileSize = fileSize;
+	public PageImpl(File file) {
 		this.cacheFile = file;
+	}
+
+	public PageImpl(File file, int fileSize) {
+		this.cacheFile = file;
+		this.fileSize = fileSize;
 	}
 
 	@Override

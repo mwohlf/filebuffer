@@ -1,9 +1,16 @@
 package net.wohlfart.filebuffer;
 
 import java.io.File;
+import java.util.Set;
 
 public interface IPageFactory {
 	
-	IPage create(File dir, long timestamp);
+    void setFilesize(int size);
+
+	void setCacheDir(String cacheDir);
+
+	IPage create(long timestamp);
+
+	Set<IPage> getPages();
 
 }

@@ -3,10 +3,6 @@ package net.wohlfart.filebuffer;
 
 public interface IPageHandler {
 
-    void setFilesize(int size);
-
-	void setCacheDir(String cacheDir);
-
 	void setPageFactory(IPageFactory pageFactory);
 
 	
