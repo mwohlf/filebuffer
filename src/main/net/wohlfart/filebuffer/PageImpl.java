@@ -3,11 +3,13 @@ package net.wohlfart.filebuffer;
 import static java.nio.channels.FileChannel.MapMode.READ_ONLY;
 import static java.nio.channels.FileChannel.MapMode.READ_WRITE;
 
-import java.io.Closeable;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.RandomAccessFile;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.nio.Buffer;
 import java.nio.BufferUnderflowException;
 import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
@@ -19,20 +21,23 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
  * a memory mapped file
+ * 
+ * 
+ * multiple threads can read each gets their own view of the data
+ * 
  * see: http://www.kdgregory.com/index.php?page=java.byteBuffer
  */
-public class PageImpl implements IPage, Closeable {
+public class PageImpl implements IPage {
 
 	public static final int LONG_SIZE = 8;
 	public static final int INT_SIZE = 4;
 
-	private static final int MIN_DATA_SIZE = 4;  // would be: int[] {0, EOF}
-	private static final int EOF = Integer.MIN_VALUE;  // TODO
+	private static final int MIN_DATA_SIZE = INT_SIZE + INT_SIZE;  // would be: int[] {0, EOF}
+	private static final int EOF = Integer.MIN_VALUE;  
 
-	private final String filename; // the filename for this mapped buffer
+	private final File cacheFile;
 
-	// size of the whole file including the header data
-	private int fileSize;
+	private final int fileSize;
 
 
 	private ReadWriteLock lock = new ReentrantReadWriteLock();
@@ -42,12 +47,12 @@ public class PageImpl implements IPage, Closeable {
 	private volatile MappedByteBuffer writeBuffer;
 	private ThreadLocal<ByteBuffer> readBuffer = new ThreadLocal<>(); // not sure if this is a good idea
 
-	private volatile boolean dirty = false;
 	private PageMetadata metaData;
 
 
-	public PageImpl(String filename) {
-		this.filename = filename;
+	public PageImpl(File file, int fileSize) {
+		this.cacheFile = file;
+		this.fileSize = fileSize;
 	}
 
 	/**
@@ -56,35 +61,25 @@ public class PageImpl implements IPage, Closeable {
 	 *    position: the next free index which is after the metatdata
 	 *    capacity: end of the file
 	 *    limit: = end of the file
-	 * the read buffer:
-	 *    position: the next free index which is 0 after the slice
-	 *    capacity: end of the file (minus the header)
-	 *    limit: = position 0 since there is nothing to read yet
 	 */
 	@Override
-	public PageImpl createFile(int filesize) {
-		this.fileSize = filesize;
+	public void openWriteBuffer() {
 
 		checkPreconditions();
-		try (RandomAccessFile rand = new RandomAccessFile(filename, "rw");
+		try (RandomAccessFile rand = new RandomAccessFile(cacheFile, "rw");
 				FileChannel channel = rand.getChannel()) {
 
 			writeLock.lock();
 			writeBuffer = channel.map(READ_WRITE, 0, fileSize);
 			PageMetadata.writeHeader(writeBuffer);
-			final ByteBuffer localReadBuffer = writeBuffer.slice().asReadOnlyBuffer();
-			localReadBuffer.flip();
-			readBuffer.set(localReadBuffer);
-			dirty = false;
 
 		} catch (FileNotFoundException ex) {
-			throw new CacheException("error finding file, filename is '" + filename + "'", ex);
+			throw new CacheException("error finding file, file is '" + cacheFile + "'", ex);
 		} catch (IOException ex) {
 			throw new CacheException("error opening file", ex);
 		} finally {
 			writeLock.unlock();
 		}
-		return this;
 	}
 
 
@@ -101,15 +96,15 @@ public class PageImpl implements IPage, Closeable {
 	 */
 	public PageImpl readWrite() {
 
-		try (RandomAccessFile file = new RandomAccessFile(filename, "rw");
-				FileChannel channel = file.getChannel()) {
+		try (RandomAccessFile rand = new RandomAccessFile(cacheFile, "rw");
+				FileChannel channel = rand.getChannel()) {
 
 			writeLock.lock();
 			if (writeBuffer == null) {
-				writeBuffer = channel.map(READ_WRITE, 0, file.length());
+				writeBuffer = channel.map(READ_WRITE, 0, cacheFile.length());
 				metaData = new PageMetadata(writeBuffer);		
 				if (metaData.getIndex() <= 0) {
-					throw new CacheException("page index is " + metaData.getIndex() + " for '" + filename + "'");
+					throw new CacheException("page index is " + metaData.getIndex() + " for '" + cacheFile + "'");
 				}
 			}		
 			writeBuffer.position(PageMetadata.getLimit(writeBuffer)); // find the append position
@@ -118,9 +113,9 @@ public class PageImpl implements IPage, Closeable {
 			readBuffer.set(localReadBuffer);
 
 		} catch (FileNotFoundException ex) {
-			throw new CacheException("error finding file filename: '" + filename + "'", ex);
+			throw new CacheException("error finding file file: '" + cacheFile + "'", ex);
 		} catch (IOException ex) {
-			throw new CacheException("error opening file filename: '" + filename + "'", ex);
+			throw new CacheException("error opening file file: '" + cacheFile + "'", ex);
 		} finally {
 			writeLock.unlock();
 		}
@@ -134,24 +129,23 @@ public class PageImpl implements IPage, Closeable {
 	 *    capacity: end of the file
 	 *    limit: = position	 
 	 */
-	public PageImpl readOnly() {
-
-		try (RandomAccessFile file = new RandomAccessFile(filename, "r");
-				FileChannel channel = file.getChannel()) {
+	public void openReadBuffer() {
+		
+		try (RandomAccessFile rand = new RandomAccessFile(cacheFile, "r");
+			 FileChannel channel = rand.getChannel()) {
 
 			readLock.lock();
-			MappedByteBuffer localReadBuffer = channel.map(READ_ONLY, 0, file.length());
+			MappedByteBuffer localReadBuffer = channel.map(READ_ONLY, 0, cacheFile.length());
 			metaData = new PageMetadata(localReadBuffer);
 			readBuffer.set(localReadBuffer.slice());
 
 		} catch (FileNotFoundException ex) {
-			throw new CacheException("error finding file, filename: '" + filename + "'", ex);
+			throw new CacheException("error finding file, file: '" + cacheFile + "'", ex);
 		} catch (IOException ex) {
-			throw new CacheException("error opening file, filename: '" + filename + "'", ex);
+			throw new CacheException("error opening file, file: '" + cacheFile + "'", ex);
 		} finally {
 			readLock.unlock();
 		}
-		return this;
 	}
 
 	// write as much data as possible into the buffer,
@@ -163,7 +157,7 @@ public class PageImpl implements IPage, Closeable {
 
 			int chunksize = incoming.limit() - incoming.position();
 			// we need to add int for this chunk's offset plus the EOF marker for the read buffer
-			if (remaining() < chunksize) { 
+			if (remainingForWrite() < chunksize) { 
 				writeBuffer.mark();
 				writeBuffer.putInt(EOF);
 				writeBuffer.reset();
@@ -172,7 +166,6 @@ public class PageImpl implements IPage, Closeable {
 			writeBuffer.putInt(chunksize);
 			writeBuffer.put(incoming);
 			PageMetadata.setLimit(writeBuffer, writeBuffer.position());
-			dirty = true;
 
 		} finally {
 			writeLock.unlock();
@@ -193,7 +186,7 @@ public class PageImpl implements IPage, Closeable {
 			} 
 			localReadBuffer.limit(localReadBuffer.position() + chunkSize);
 			final ByteBuffer result = localReadBuffer.slice();
-			
+
 			// prepare for the next read
 			localReadBuffer.position(localReadBuffer.position() + chunkSize);
 			localReadBuffer.limit(localReadBuffer.capacity());
@@ -209,14 +202,14 @@ public class PageImpl implements IPage, Closeable {
 	}
 
 	@Override
-	public boolean isFullyRead() {
+	public boolean isReadComplete() {
 		try {
 			readLock.lock();
 			ByteBuffer localReadBuffer = readBuffer.get();
 			localReadBuffer.mark();
 			int nextLimit = localReadBuffer.getInt();
 			localReadBuffer.reset();
-			
+
 			return nextLimit == EOF;
 		} finally {
 			readLock.unlock();
@@ -227,17 +220,13 @@ public class PageImpl implements IPage, Closeable {
 	 * the byte count that can be stored in this buffer without getting an overflow
 	 */
 	@Override
-	public int remaining() {
+	public int remainingForWrite() {
 		return writeBuffer.remaining() - (INT_SIZE + INT_SIZE);
 	}
 
 	private void checkPreconditions() {
-		if (new File(filename).exists()) {
-			throw new CacheException("file for new page already exists "
-					+ " filename is '" + filename + "'");
-		}
 		if (writeBuffer != null) {
-			throw new CacheException("write buffer already created for " + filename);
+			throw new CacheException("write buffer already created for " + cacheFile);
 		}
 		if (PageMetadata.METADATA_SIZE + MIN_DATA_SIZE > fileSize) {
 			throw new CacheException("provided filesize is too small, for header and data we"
@@ -246,28 +235,88 @@ public class PageImpl implements IPage, Closeable {
 		}
 	}
 
-	/**
-	 * closes the write buffer
-	 */
+
 	@Override
-	public void finalizeFile() {
+	public void closeWriteBuffer() {
 		try {
 			writeLock.lock();
-			writeBuffer.force();
-			dirty = false;
+			if (writeBuffer != null) {
+				writeBuffer.force();
+				destroyByteBuffer(writeBuffer);
+				writeBuffer = null;
+			}
 		} finally {
 			writeLock.unlock();
 		}
 	}
 
 	@Override
-	public void close() {
-		if (writeBuffer != null) {
-			// writeBuffer.putInt(EOF);
-			writeBuffer.force();
+	public void closeReadBuffer() {
+		try {
+			readLock.lock();
+			ByteBuffer localReadBuffer = readBuffer.get();
+			if (localReadBuffer != null) {
+				destroyByteBuffer(localReadBuffer);
+				readBuffer.remove();
+			}
+		} finally {
+			readLock.unlock();
 		}
-		dirty = false;
-		metaData = null;
+	}
+
+
+	// run the cleaner on the ByteBuffer, this seems to be common practice
+	// however we might run into trouble when oracle changes the API
+	// see: http://stackoverflow.com/questions/1854398/how-to-garbage-collect-a-direct-buffer-java
+	private void destroyByteBuffer(Buffer buffer) {
+		try {
+			if (!buffer.isDirect()) {
+				return;
+			}
+			Method cleanerMethod = buffer.getClass().getMethod("cleaner");
+			cleanerMethod.setAccessible(true);
+			Object cleaner = cleanerMethod.invoke(buffer);
+			if (cleaner == null) {
+				return;
+			}
+			Method cleanMethod = cleaner.getClass().getMethod("clean");
+			cleanMethod.setAccessible(true);
+			cleanMethod.invoke(cleaner);
+
+
+		} catch (InvocationTargetException 
+				| NoSuchMethodException 
+				| SecurityException 
+				| IllegalAccessException 
+				| IllegalArgumentException ex) {
+			throw new CacheException("ByteBuffer can't be destroyed" , ex);
+		}
+	}
+
+	@Override
+	public long getTimestamp() {
+		// TODO Auto-generated method stub
+		return 0;
+	}
+
+	@Override
+	public boolean hasWriteBuffer() {
+		try {
+			writeLock.lock();
+			return writeBuffer != null;
+		} finally {
+			writeLock.unlock();
+		}
+	}
+
+	@Override
+	public boolean hasReadBuffer() {
+		try {
+			readLock.lock();
+			return readBuffer.get() != null;
+		} finally {
+			readLock.unlock();
+		}		
 	}
 
 }
