@@ -33,7 +33,7 @@ class PageMetadata {
      * initializes the write buffer with the header information and sets the position of the 
      * buffer just after the header
      */
-	static void writeHeader(MappedByteBuffer writeBuffer) {
+	static void writeInitialHeader(MappedByteBuffer writeBuffer) {
         writeBuffer.putLong(INDEX_POS, nextPageIndex++);
         writeBuffer.putLong(LIMIT_POS, HEADER_OFFSET);
         writeBuffer.position(HEADER_OFFSET);
@@ -49,6 +49,11 @@ class PageMetadata {
     
 	long getIndex() {
 		return bufferIndex;
+	}
+
+	public long getTimestamp() {
+		// TODO Auto-generated method stub
+		return 0;
 	}
 
 }

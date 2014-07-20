@@ -48,7 +48,7 @@ public class BufferImpl implements IBuffer, Closeable {
     	if (readPage == null) {
     		readPage = pageHandler.getReadPage(firstReadTimestamp);
     	}
-    	if (readPage.isFullyRead()) {
+    	if (readPage.isReadComplete()) {
     		pageHandler.closeReadPage(readPage);
     		readPage = pageHandler.getNextReadPage(readPage);
     	}

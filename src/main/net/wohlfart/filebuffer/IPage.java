@@ -4,37 +4,36 @@ import java.nio.ByteBuffer;
 
 public interface IPage {
 
-	/**
-	 * creates a page file and initializes read and write buffers
-	 */
-	PageImpl createFile(int payloadSize);
-
-	/**
-	 * close the write buffer (you can still read)
-	 */
-	void finalizeFile();
-
-    /**
-     * close any buffer
-     */
-	void close();
-
-    /**
-     * read data from the current position of this page
-     */
-    ByteBuffer read();
-
-    /**
-     * return how much bytes can be written 
-     */
-    int remaining();
+	long getTimestamp();
 	
-    /**
-     * write the buffer into the page file, the position of the buffer will be modified
-     */
+	long getIndex();
+	
+	
+	// writing   ----------
+	
+	boolean hasWriteBuffer();
+
+	void createWriteBuffer();
+
+	void openWriteBuffer();
+
+    int remainingForWrite();
+	
     void write(ByteBuffer buffer);
 
-	boolean isFullyRead();
+	void closeWriteBuffer();
 
+	
+	// reading  --------
+
+	boolean hasReadBuffer();
+
+	void openReadBuffer();
+	
+	boolean isReadComplete();
+
+    ByteBuffer read();
+    
+	void closeReadBuffer();
 	
 }

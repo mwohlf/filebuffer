@@ -1,14 +1,12 @@
 package net.wohlfart.filebuffer;
 
-public class PageFactory implements IPageFactory {
+import java.io.File;
 
-	@Override
-	public IPage create() {
-		// TODO Auto-generated method stub
-		return null;
+public class PageFactory implements IPageFactory {
+	
+	
+	public IPage create(File dir, long timestamp) {
+		return new PageImpl();
 	}
-	
-	
-	
 
 }

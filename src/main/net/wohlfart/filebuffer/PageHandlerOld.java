@@ -1,0 +1,124 @@
+package net.wohlfart.filebuffer;
+
+import java.io.File;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import it.unimi.dsi.fastutil.longs.Long2ObjectAVLTreeMap;
+import it.unimi.dsi.fastutil.longs.Long2ObjectSortedMap;
+
+import org.joda.time.DateTime;
+import org.joda.time.format.DateTimeFormat;
+import org.joda.time.format.DateTimeFormatter;
+
+public class PageHandlerOld {
+
+    private static final int DEFAULT_FILE_SIZE = 1024 * 500;
+    private static final String TIMESTAMP_FORMAT = "yyyy.MM.dd-HH:mm:ss-SSS-z"; // we always use UTC
+    private static final String FILENAME_POSTFIX = ".page";
+    private static final Pattern FILENAME_PATTERN = Pattern.compile("(" + TIMESTAMP_FORMAT + ")" + FILENAME_POSTFIX);
+    private static final DateTimeFormatter DATE_FORMAT = DateTimeFormat.forPattern(TIMESTAMP_FORMAT).withZoneUTC();
+
+    // mapping the timestamp to the page
+    private final Long2ObjectSortedMap<IPage> pageCache = new Long2ObjectAVLTreeMap<>();
+
+    private File cacheDir;
+
+    private int filesize = DEFAULT_FILE_SIZE;
+
+    public PageHandlerOld(String cacheDirName, int filesize) {
+		this.cacheDir = validateDir(cacheDirName);
+        this.filesize = filesize;
+        initializeCacheDir();
+	}
+
+    public void setFilesize(int filesize) {
+        this.filesize = filesize;
+    }
+
+    
+    public void setCacheDir(String dirname) {
+		this.cacheDir = validateDir(dirname);
+        initializeCacheDir();
+    }
+
+    // return a page for appending make sure there is some room left to write in the returned page
+    
+    public IPage getLastPage(long timestamp) {
+        long ts = timestamp;
+        if (pageCache.isEmpty()) {
+            pageCache.put(ts, createPage(ts));
+        }
+        IPage page = pageCache.get(pageCache.lastLongKey());
+        while (page.remaining() == 0) {
+            ts++;
+            pageCache.put(ts, createPage(ts));
+            page = pageCache.get(pageCache.lastLongKey());
+        }
+        return page;
+    }
+    
+    // return a page for reading
+     
+    public IPage getFirstPage(long from) {
+        if (pageCache.isEmpty()) {
+            pageCache.put(from, createPage(from));
+        }
+        final Long2ObjectSortedMap<IPage> tail = pageCache.tailMap(from);
+        Long key = tail.firstKey();
+        return tail.get(key);
+    }
+
+
+    private void initializeCacheDir() {
+    	pageCache.clear();
+        File[] files = cacheDir.listFiles();
+        if (files == null) {
+            throw new IllegalArgumentException("can't read directory: '" + cacheDir + "'");
+        }
+        for (File file : files) {
+            if (isPage(file)) {
+                final String filename = file.getName();
+                pageCache.put(parseDate(filename), new PageImpl(filename));
+            }
+        }
+    }
+
+    private File validateDir(String cacheDir) {
+        final File result = new File(cacheDir);
+        if (!result.exists() && !result.mkdirs()) {
+            throw new IllegalArgumentException("can't create directory at: '" + cacheDir + "'");
+        }
+        if (!result.canWrite()) {
+            throw new IllegalArgumentException("can't write to: '" + cacheDir + "'");
+        }
+        return result;
+    }
+
+    private PageImpl createPage(long instant) {
+        return new PageImpl(cacheDir.getPath() + "/" + DATE_FORMAT.print(instant) + FILENAME_POSTFIX).createFile(filesize);
+    }
+
+    private boolean isPage(File file) {
+        return file.exists()
+            && file.canRead()
+            && !file.isDirectory()
+            && !file.isHidden()
+            && (parseDate(file.getName()) > Long.MIN_VALUE);
+    }
+
+    private long parseDate(String filename) {
+        Matcher matcher = FILENAME_PATTERN.matcher(filename);
+        if (!matcher.matches()) {
+            return Long.MIN_VALUE;
+        }
+        try {
+            DateTime date = DateTime.parse(
+                    matcher.group(1), DATE_FORMAT);
+            return date.getMillis();
+        } catch (IllegalArgumentException ex) {
+            return Long.MIN_VALUE;
+        }
+    }
+
+}
