@@ -2,16 +2,21 @@ package net.wohlfart.filebuffer;
 
 import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
-
+/**
+ * 
+ *
+ */
 class PageMetadata {
 	
     private static volatile long nextPageIndex = 1; // should be kept as instance in the handler
 
     private static final int INDEX_POS = 0;
     private static final int LIMIT_POS = 8;
-	private static final int HEADER_OFFSET = PageImpl.LONG_SIZE + PageImpl.LONG_SIZE;
 
-	static final int METADATA_SIZE = PageImpl.LONG_SIZE + PageImpl.LONG_SIZE; 
+	static final int METADATA_SIZE = PageImpl.LONG_SIZE + PageImpl.LONG_SIZE;  
+	
+	private static final int HEADER_OFFSET = METADATA_SIZE;
+
 
     private final long bufferIndex;
 	
@@ -45,6 +50,5 @@ class PageMetadata {
 	long getIndex() {
 		return bufferIndex;
 	}
-
 
 }

@@ -19,7 +19,7 @@ public class SinglePageTest {
     private String filename;
 
     @Before
-    public void prepare() throws IOException {
+    public void prepareFilename() throws IOException {
         filename = File.createTempFile(
                 getClass().getCanonicalName(),
                 String.valueOf(Thread.currentThread().getId())).getCanonicalPath();
@@ -46,6 +46,8 @@ public class SinglePageTest {
     public void smokeTest() throws IOException {
         IPage write = new PageImpl(filename).createFile(PageMetadata.METADATA_SIZE + 70);
         write.write(bb("blablablabla23"));
+        assertEquals(70 - (PageImpl.INT_SIZE + PageImpl.INT_SIZE)
+        		        - ("blablablabla23".getBytes().length + PageImpl.INT_SIZE), write.remaining());
         write.close();
 
         IPage read = new PageImpl(filename).readOnly();
@@ -56,9 +58,14 @@ public class SinglePageTest {
     @SuppressWarnings("resource")
 	@Test
     public void doubleWrite() throws IOException {
-    	IPage write = new PageImpl(filename).createFile(70);
+    	IPage write = new PageImpl(filename).createFile(PageMetadata.METADATA_SIZE + 70);
         write.write(bb("test1data"));
+        assertEquals(70 - (PageImpl.INT_SIZE + PageImpl.INT_SIZE)
+		        	    - ("test1data".getBytes().length + PageImpl.INT_SIZE), write.remaining());
         write.write(bb("2"));
+        assertEquals(70 - (PageImpl.INT_SIZE + PageImpl.INT_SIZE)
+		         - ("test1data".getBytes().length + PageImpl.INT_SIZE)
+        		 - ("2".getBytes().length + PageImpl.INT_SIZE), write.remaining());
         write.close();
 
         IPage read = new PageImpl(filename).readOnly();
@@ -177,26 +184,26 @@ public class SinglePageTest {
     public void writeIntoFullPage() throws IOException {
         // stuff in the file:
         // 8 byte index, 4 byte limit, (not part of the payload)
-        // 4 byte chunksize in
+        // 4 byte chunksize, 4 byte EOF
     	IPage write = new PageImpl(filename).createFile(PageMetadata.METADATA_SIZE + 19); 
-        ByteBuffer param = bb("12345678901234567890123456789012345");
+        ByteBuffer param = bb("12345678901234567890");  // 20 
         write.write(param);
-        assertEquals(35, param.remaining());
+        assertEquals(20, param.remaining());
 
         // 35 minus HEADER_SIZE (16) --> we have 19 to write
-        String string = "12345678901234567890123456789012345".substring(PageMetadata.METADATA_SIZE);
+        String string = "1234567890123456789";
         param = bb(string);
         write.write(param);
-        assertEquals(string.length(), param.remaining());
+        assertEquals(19, param.remaining());
         
         // we need 4 for the limit pointer  --> 15
-        string = "12345678901234567890123456789012345".substring(PageMetadata.METADATA_SIZE + PageImpl.INT_SIZE);
+        string = "1234567890123456789".substring(PageImpl.INT_SIZE);
         param = bb(string);
         write.write(param);
         assertEquals(string.length(), param.remaining());
 
         // we need another 4 for the EOF pointer --> 11
-        string = "12345678901234567890123456789012345".substring(PageMetadata.METADATA_SIZE + PageImpl.INT_SIZE  + PageImpl.INT_SIZE);
+        string = "1234567890123456789".substring(PageImpl.INT_SIZE  + PageImpl.INT_SIZE);
         param = bb(string);
         write.write(param);
         assertEquals(0, param.remaining());

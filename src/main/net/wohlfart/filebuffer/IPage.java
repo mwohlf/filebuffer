@@ -25,8 +25,16 @@ public interface IPage {
     ByteBuffer read();
 
     /**
+     * return how much bytes can be written 
+     */
+    int remaining();
+	
+    /**
      * write the buffer into the page file, the position of the buffer will be modified
      */
     void write(ByteBuffer buffer);
+
+	boolean isFullyRead();
+
 	
 }

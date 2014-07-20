@@ -1,74 +1,69 @@
 package net.wohlfart.filebuffer;
 
 
+import java.io.Closeable;
+import java.io.IOException;
 import java.nio.ByteBuffer;
 
-public class BufferImpl implements IBuffer {
+public class BufferImpl implements IBuffer, Closeable {
 
-    private static final String DEFAULT_CACHE_DIR = "/tmp/" + BufferImpl.class.getName();
-    private static final int DEFAULT_PAGE_SIZE = 512 * 1024;
-
-    private long now = Long.MIN_VALUE;
-
-    private final IPageHandler pageHandler;
-
-    public BufferImpl() {
-        pageHandler = new PageHandler(DEFAULT_CACHE_DIR, DEFAULT_PAGE_SIZE);
-    }
-
-    public void setPageSize(int size) {
-        pageHandler.setPayloadSize(size);
-    }
-
-    public void setCacheDir(String cacheDir) {
-        pageHandler.setCacheDir(cacheDir);
-    }
-
+    private IPageHandler pageHandler;
     
+	private long firstReadTimestamp;
+	
+	IPage readPage;
+	IPage writePage;
+
+    public void setPageHandler(IPageHandler pageHandler) {
+        this.pageHandler = pageHandler;
+    }
+
     /**
-     * pesist the ByteBuffer, this will modify the position in chunk
+     * persist the ByteBuffer, this will modify the position in chunk
      */
     @Override
     public void enqueue(ByteBuffer chunk, long timestamp) throws CacheException {
-        if (isPast(timestamp)) {
-            throw new IllegalArgumentException(""
-            		+ "the provided timestamp is too old: '" + timestamp + "'"
-            		+ " can't change data in the past"
-            		);
-        }
-        while (chunk.position() < chunk.limit()) {
-            final PageImpl page = pageHandler.getLastPage(timestamp);
-            page.write(chunk);
-        }
+    	if (writePage == null) {
+    		writePage = pageHandler.getWritePage(timestamp);
+        	assert writePage.remaining() > (chunk.limit() - chunk.position()) : "chunk is too big for new page";
+    	}
+    	if (writePage.remaining() < (chunk.limit() - chunk.position())) {
+    		pageHandler.closeWritePage(writePage);
+    		writePage = pageHandler.getWritePage(timestamp);
+        	assert writePage.remaining() > (chunk.limit() - chunk.position()) : "chunk is too big for new page";
+    	}
+    	writePage.write(chunk);
     }
 
+    /**
+	 * set the read pointer to timestamp or shortly before
+     */
     @Override
-    public void setStarttime(long timestamp) throws CacheException {
-        // TODO: implement me
+    public void setReadStart(long firstReadTimestamp) throws CacheException {
+        this.firstReadTimestamp = firstReadTimestamp; 
     }
 
     @Override
     public ByteBuffer dequeue() throws CacheException {
-        return null;  // TODO: implement me
+    	if (readPage == null) {
+    		readPage = pageHandler.getReadPage(firstReadTimestamp);
+    	}
+    	if (readPage.isFullyRead()) {
+    		pageHandler.closeReadPage(readPage);
+    		readPage = pageHandler.getNextReadPage(readPage);
+    	}
+    	return readPage.read();
     }
 
-    public byte[] dequeue(long timestamp) throws CacheException {
-    	byte[] chunk = new byte[0];
-        int offset = 0;
-        while (offset < chunk.length) {
-        	final PageImpl page = pageHandler.getFirstPage(timestamp);
-       //     offset = page.read(offset, chunk);
-        }
-        return chunk;
-    }
-
-    
-    public long getNow() {
-        return now;
-    }
-
-    boolean isPast(long timestamp) {
-        return timestamp < now;
-    }
+	@Override
+	public void close() throws IOException {
+    	if (readPage != null) {
+    		pageHandler.closeReadPage(readPage);
+    	}
+    	if (writePage != null) {
+    		pageHandler.closeWritePage(writePage);
+    	}
+		
+	}
 
 }

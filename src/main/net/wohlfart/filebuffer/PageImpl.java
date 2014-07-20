@@ -18,7 +18,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 
 /**
- * a memory mapped file that
+ * a memory mapped file
  * see: http://www.kdgregory.com/index.php?page=java.byteBuffer
  */
 public class PageImpl implements IPage, Closeable {
@@ -26,11 +26,8 @@ public class PageImpl implements IPage, Closeable {
 	public static final int LONG_SIZE = 8;
 	public static final int INT_SIZE = 4;
 
-	private static final int MIN_DATA_SIZE = 4;  // woudl be: int[] {0, EOF}
-	private static final int EOF = Integer.MIN_VALUE;
-
-
-	private long pageIndex; // the unique index for this page
+	private static final int MIN_DATA_SIZE = 4;  // would be: int[] {0, EOF}
+	private static final int EOF = Integer.MIN_VALUE;  // TODO
 
 	private final String filename; // the filename for this mapped buffer
 
@@ -39,10 +36,11 @@ public class PageImpl implements IPage, Closeable {
 
 
 	private ReadWriteLock lock = new ReentrantReadWriteLock();
-	private volatile MappedByteBuffer writeBuffer;
-	private ThreadLocal<ByteBuffer> readBuffer = new ThreadLocal<>(); // not sure if this is a good idea
 	private Lock writeLock = lock.writeLock();
 	private Lock readLock = lock.readLock();
+
+	private volatile MappedByteBuffer writeBuffer;
+	private ThreadLocal<ByteBuffer> readBuffer = new ThreadLocal<>(); // not sure if this is a good idea
 
 	private volatile boolean dirty = false;
 	private PageMetadata metaData;
@@ -165,7 +163,10 @@ public class PageImpl implements IPage, Closeable {
 
 			int chunksize = incoming.limit() - incoming.position();
 			// we need to add int for this chunk's offset plus the EOF marker for the read buffer
-			if (writeBuffer.remaining() < chunksize + INT_SIZE + INT_SIZE) { 
+			if (remaining() < chunksize) { 
+				writeBuffer.mark();
+				writeBuffer.putInt(EOF);
+				writeBuffer.reset();
 				return;
 			}
 			writeBuffer.putInt(chunksize);
@@ -207,8 +208,27 @@ public class PageImpl implements IPage, Closeable {
 		}
 	}
 
+	@Override
+	public boolean isFullyRead() {
+		try {
+			readLock.lock();
+			ByteBuffer localReadBuffer = readBuffer.get();
+			localReadBuffer.mark();
+			int nextLimit = localReadBuffer.getInt();
+			localReadBuffer.reset();
+			
+			return nextLimit == EOF;
+		} finally {
+			readLock.unlock();
+		}		
+	}
+
+	/**
+	 * the byte count that can be stored in this buffer without getting an overflow
+	 */
+	@Override
 	public int remaining() {
-		return writeBuffer.remaining();
+		return writeBuffer.remaining() - (INT_SIZE + INT_SIZE);
 	}
 
 	private void checkPreconditions() {
@@ -243,6 +263,7 @@ public class PageImpl implements IPage, Closeable {
 	@Override
 	public void close() {
 		if (writeBuffer != null) {
+			// writeBuffer.putInt(EOF);
 			writeBuffer.force();
 		}
 		dirty = false;

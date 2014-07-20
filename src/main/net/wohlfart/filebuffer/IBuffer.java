@@ -1,19 +1,16 @@
 package net.wohlfart.filebuffer;
 
 
-import java.io.FileNotFoundException;
-import java.io.IOException;
 import java.nio.ByteBuffer;
 
 public interface IBuffer {
 
-    // store data that happened at timestamp or after
+    // store data that happened at timestamp or later
     void enqueue(ByteBuffer chunk, long timestamp) throws CacheException;
 
-    // set the timestamp for the next dequeue operation
-    void setStarttime(long timestamp) throws CacheException;
+	void setReadStart(long firstReadTimestamp) throws CacheException;
 
-    // reads data including timestamp or before
+    // reads data including data at firstReadTimestamp
     ByteBuffer dequeue() throws CacheException;
 
 }

@@ -13,28 +13,28 @@ import org.joda.time.format.DateTimeFormatter;
 
 public class PageHandler implements IPageHandler {
 
-    private static final int DEFAULT_PAYLOAD_SIZE = 1024 * 500;
+    private static final int DEFAULT_FILE_SIZE = 1024 * 500;
     private static final String FILENAME_FORMAT = "yyyy.MM.dd-HH:mm:ss-SSS"; // we always use UTC
     private static final String FILENAME_POSTFIX = ".data"; // always use UTC
     private static final Pattern FILENAME_PATTERN = Pattern.compile("(" + FILENAME_FORMAT + ")" + FILENAME_POSTFIX);
     private static final DateTimeFormatter DATE_FORMAT = DateTimeFormat.forPattern(FILENAME_FORMAT).withZoneUTC();
 
-
-    private final Long2ObjectSortedMap<PageImpl> pageCache = new Long2ObjectAVLTreeMap<>();
+    // mapping the timestamp to the page
+    private final Long2ObjectSortedMap<IPage> pageCache = new Long2ObjectAVLTreeMap<>();
 
     private File cacheDir;
 
-    private int payloadSize = DEFAULT_PAYLOAD_SIZE;
+    private int filesize = DEFAULT_FILE_SIZE;
 
     public PageHandler(String cacheDirName, int payloadSize) {
 		this.cacheDir = validateDir(cacheDirName);
-        this.payloadSize = payloadSize;
+        this.filesize = payloadSize;
         initializeCacheDir();
 	}
 
     @Override
-    public void setPayloadSize(int size) {
-        payloadSize = size;
+    public void setFilesize(int filesize) {
+        this.filesize = filesize;
     }
 
     @Override
@@ -45,12 +45,12 @@ public class PageHandler implements IPageHandler {
 
     // return a page for appending make sure there is some room left to write in the returned page
     @Override
-    public PageImpl getLastPage(long timestamp) {
+    public IPage getLastPage(long timestamp) {
         long ts = timestamp;
         if (pageCache.isEmpty()) {
             pageCache.put(ts, createPage(ts));
         }
-        PageImpl page = pageCache.get(pageCache.lastLongKey());
+        IPage page = pageCache.get(pageCache.lastLongKey());
         while (page.remaining() == 0) {
             ts++;
             pageCache.put(ts, createPage(ts));
@@ -61,11 +61,11 @@ public class PageHandler implements IPageHandler {
     
     // return a page for reading
     @Override 
-    public PageImpl getFirstPage(long from) {
+    public IPage getFirstPage(long from) {
         if (pageCache.isEmpty()) {
             pageCache.put(from, createPage(from));
         }
-        final Long2ObjectSortedMap<PageImpl> tail = pageCache.tailMap(from);
+        final Long2ObjectSortedMap<IPage> tail = pageCache.tailMap(from);
         Long key = tail.firstKey();
         return tail.get(key);
     }
@@ -97,7 +97,7 @@ public class PageHandler implements IPageHandler {
     }
 
     private PageImpl createPage(long instant) {
-        return new PageImpl(cacheDir.getPath() + "/" + DATE_FORMAT.print(instant) + FILENAME_POSTFIX).createFile(payloadSize);
+        return new PageImpl(cacheDir.getPath() + "/" + DATE_FORMAT.print(instant) + FILENAME_POSTFIX).createFile(filesize);
     }
 
     private boolean isPage(File file) {
